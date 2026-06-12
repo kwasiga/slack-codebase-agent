@@ -40,21 +40,6 @@ def ask(question) -> dict:
             return {"answer": "", "sources": sources}
 
         if response.stop_reason == "tool_use":
-            tool_use_block = next(b for b in response.content if b.type == "tool_use")
-            query = tool_use_block.input["query"]
-            top_k = tool_use_block.input.get("top_k", 5)
-            chunks = semantic_search(query, top_k)
-
-            sources.extend(
-                {"file": c["file_path"], "lines": f"{c['start_line']}-{c['end_line']}"}
-                for c in chunks
-            )
-
-            tool_result = "\n\n".join(
-                f"File: {c['file_path']} (lines {c['start_line']}-{c['end_line']})\n{c['chunk_text']}"
-                for c in chunks
-            )
-
             assistant_content = []
             for b in response.content:
                 if b.type == "text":
@@ -62,15 +47,27 @@ def ask(question) -> dict:
                 elif b.type == "tool_use":
                     assistant_content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
             messages.append({"role": "assistant", "content": assistant_content})
-            messages.append({
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_block.id,
-                        "content": tool_result or "No results found."
-                    }
-                ]
-            })
+
+            tool_results = []
+            for b in response.content:
+                if b.type != "tool_use":
+                    continue
+                query = b.input["query"]
+                top_k = b.input.get("top_k", 5)
+                chunks = semantic_search(query, top_k)
+                sources.extend(
+                    {"file": c["file_path"], "lines": f"{c['start_line']}-{c['end_line']}"}
+                    for c in chunks
+                )
+                tool_result = "\n\n".join(
+                    f"File: {c['file_path']} (lines {c['start_line']}-{c['end_line']})\n{c['chunk_text']}"
+                    for c in chunks
+                )
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": b.id,
+                    "content": tool_result or "No results found."
+                })
+            messages.append({"role": "user", "content": tool_results})
 
     return {"answer": "Could not generate an answer after multiple searches.", "sources": sources}
