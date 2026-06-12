@@ -6,14 +6,14 @@ A Slack bot that answers natural language questions about a codebase using Retri
 
 ## How It Works
 
-1. **Ingestion** — A one-time pipeline clones a GitHub repo, chunks the source files, embeds each chunk using Voyage AI (`voyage-code-3`), and stores the vectors in a PostgreSQL database with pgvector.
-2. **Retrieval** — When a query comes in, it's embedded with the same model, and a cosine similarity search returns the most relevant code chunks.
-3. **Generation** — Claude receives the query and retrieved chunks, uses a `search_codebase` tool to re-query if needed, and returns a grounded answer.
-4. **Slack Interface** — A Slack Bolt app receives slash commands, calls the agent pipeline, and posts the response back to the channel with source file references.
+1. **Ingestion** — Run `/ingest <github-url>` to clone a repo, chunk the source files, embed each chunk using Voyage AI (`voyage-code-3`), and store the vectors in PostgreSQL with pgvector.
+2. **Retrieval** — When a query comes in, it's embedded with the same model and a cosine similarity search returns the most relevant code chunks.
+3. **Generation** — Claude receives the query and retrieved chunks and returns a grounded answer.
+4. **Slack Interface** — A Slack Bolt app receives slash commands via socket mode and posts the response back to the channel.
 
 ```
 /ask How does authentication work?
-  → embed query → pgvector search → GPT-4o (with tool use) → Slack response
+  → embed query → pgvector search → Claude → Slack response
 ```
 
 ---
@@ -26,8 +26,8 @@ A Slack bot that answers natural language questions about a codebase using Retri
 | Web Framework | FastAPI |
 | Vector Database | PostgreSQL + pgvector |
 | Embeddings | Voyage AI `voyage-code-3` |
-| LLM | Claude with tool use |
-| Slack | Slack Bolt SDK |
+| LLM | Claude (`claude-opus-4-8`) |
+| Slack | Slack Bolt SDK (socket mode) |
 | Deployment | Render |
 
 ---
@@ -45,30 +45,23 @@ slack-codebase-agent/
 │   └── pipeline.py       # Wire clone → chunk → embed → store
 │
 ├── retrieval/
-│   ├── search.py         # Cosine similarity query against pgvector
-│   └── rerank.py         # Optional reranking of top-k results
+│   └── search.py         # Cosine similarity query against pgvector
 │
 ├── agent/
-│   ├── tools.py          # search_codebase tool definition for GPT-4o
-│   ├── prompt.py         # System prompt and context assembly
-│   └── run.py            # Agentic loop: LLM call, tool use, final answer
+│   └── agent.py          # ask(): retrieve chunks, call Claude, return answer
 │
 ├── api/
 │   ├── main.py           # FastAPI app entry point
-│   └── routes.py         # POST /query, POST /slack/events
+│   └── routes.py         # POST /query
 │
 ├── slack/
-│   ├── bot.py            # Slack Bolt app setup
-│   └── handlers.py       # Slash command and event handlers
+│   └── bot.py            # Slack Bolt app, /ask and /ingest handlers
 │
 ├── db/
-│   ├── client.py         # psycopg2 connection pool
 │   └── schema.sql        # Table definition for chunks and vectors
 │
-├── config.py             # Environment variable loading
 ├── requirements.txt
 ├── .env.example
-├── Dockerfile
 └── README.md
 ```
 
@@ -79,10 +72,10 @@ slack-codebase-agent/
 ### Prerequisites
 
 - Python 3.11+
-- PostgreSQL with the `pgvector` extension enabled
+- PostgreSQL with the `pgvector` extension enabled (or Docker)
 - A Voyage AI API key
 - An Anthropic API key
-- A Slack app with slash command and bot token scopes
+- A Slack app with `/ask` and `/ingest` slash commands, socket mode enabled
 
 ### 1. Clone the repo
 
@@ -109,9 +102,9 @@ Fill in `.env`:
 VOYAGE_API_KEY=
 ANTHROPIC_API_KEY=
 DATABASE_URL=postgresql://user:password@host:5432/dbname
-SLACK_BOT_TOKEN=
+SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=
-TARGET_REPO_URL=https://github.com/target/repo
+SLACK_APP_TOKEN=xapp-...
 ```
 
 ### 4. Set up the database
@@ -120,29 +113,17 @@ TARGET_REPO_URL=https://github.com/target/repo
 psql $DATABASE_URL -f db/schema.sql
 ```
 
-### 5. Run ingestion
+Or with Docker:
 
 ```bash
-python -m ingestion.pipeline
+docker run -d --name pgvector -e POSTGRES_PASSWORD=postgres -p 5432:5432 pgvector/pgvector:pg17
+docker exec -i pgvector psql -U postgres -d postgres < db/schema.sql
 ```
 
-### 6. Start the API server
+### 5. Start the bot
 
 ```bash
-uvicorn api.main:app --reload
-```
-
-### 7. Connect Slack
-
-Expose your local server with [ngrok](https://ngrok.com/) during development:
-
-```bash
-ngrok http 8000
-```
-
-Set the slash command request URL in your Slack app dashboard to:
-```
-https://your-ngrok-url.ngrok.io/slack/events
+python -m slack.bot
 ```
 
 ---
@@ -152,12 +133,13 @@ https://your-ngrok-url.ngrok.io/slack/events
 In any Slack channel where the bot is present:
 
 ```
-/ask How does the authentication middleware work?
+/ingest https://github.com/some/repo
+/ask How does authentication work?
 /ask Where is rate limiting implemented?
-/ask What does the chunker module do?
+/ask What does this project do?
 ```
 
-The bot will respond with a generated answer and the source files it referenced.
+The bot will ingest any public GitHub repo on demand and answer questions grounded in the actual source code.
 
 ---
 
@@ -165,20 +147,17 @@ The bot will respond with a generated answer and the source files it referenced.
 
 The app is configured for deployment on [Render](https://render.com).
 
-- The FastAPI app runs as a web service
+- Run `python -m slack.bot` as the start command
 - PostgreSQL with pgvector is provisioned as a managed database
 - Environment variables are set via the Render dashboard
-- The ingestion pipeline can be triggered as a one-off job
 
 ---
 
 ## Key Concepts
 
-**Chunking** — Source files are split into overlapping windows (e.g. 50 lines with 10-line overlap) to preserve context at boundaries. Chunks are kept under ~512 tokens to maximize embedding precision.
+**Chunking** — Source files are split into overlapping 50-line windows with a 10-line overlap to preserve context at boundaries.
 
-**RAG** — Retrieval-Augmented Generation grounds the LLM's response in actual retrieved code rather than relying on parametric memory, reducing hallucination and keeping answers traceable to source.
-
-**Agentic retrieval** — Claude is given a `search_codebase` tool it can invoke mid-generation if the initial retrieval isn't sufficient. This allows multi-hop reasoning across the codebase.
+**RAG** — Retrieval-Augmented Generation grounds Claude's response in actual retrieved code rather than relying on parametric memory, reducing hallucination and keeping answers traceable to source.
 
 **pgvector** — A PostgreSQL extension that stores and queries high-dimensional vectors natively, enabling cosine similarity search without a separate vector database service.
 
