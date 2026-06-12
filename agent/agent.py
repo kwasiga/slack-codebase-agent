@@ -21,6 +21,10 @@ def ask(question) -> dict:
     sources = []
 
     for _ in range(4):
+        import json
+        print("=== MESSAGES SENT TO API ===")
+        for i, m in enumerate(messages):
+            print(f"[{i}] role={m['role']} content={json.dumps(m['content'], default=str)[:300]}")
         response = client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=1024,
@@ -51,7 +55,13 @@ def ask(question) -> dict:
                 for c in chunks
             )
 
-            messages.append({"role": "assistant", "content": response.content})
+            assistant_content = []
+            for b in response.content:
+                if b.type == "text":
+                    assistant_content.append({"type": "text", "text": b.text})
+                elif b.type == "tool_use":
+                    assistant_content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+            messages.append({"role": "assistant", "content": assistant_content})
             messages.append({
                 "role": "user",
                 "content": [
