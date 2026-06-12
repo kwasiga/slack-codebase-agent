@@ -6,9 +6,9 @@ A Slack bot that answers natural language questions about a codebase using Retri
 
 ## How It Works
 
-1. **Ingestion** — A one-time pipeline clones a GitHub repo, chunks the source files, embeds each chunk using OpenAI, and stores the vectors in a PostgreSQL database with pgvector.
+1. **Ingestion** — A one-time pipeline clones a GitHub repo, chunks the source files, embeds each chunk using Voyage AI (`voyage-code-3`), and stores the vectors in a PostgreSQL database with pgvector.
 2. **Retrieval** — When a query comes in, it's embedded with the same model, and a cosine similarity search returns the most relevant code chunks.
-3. **Generation** — GPT-4o receives the query and retrieved chunks, uses a `search_codebase` tool to re-query if needed, and returns a grounded answer.
+3. **Generation** — Claude receives the query and retrieved chunks, uses a `search_codebase` tool to re-query if needed, and returns a grounded answer.
 4. **Slack Interface** — A Slack Bolt app receives slash commands, calls the agent pipeline, and posts the response back to the channel with source file references.
 
 ```
@@ -25,8 +25,8 @@ A Slack bot that answers natural language questions about a codebase using Retri
 | Language | Python 3.11+ |
 | Web Framework | FastAPI |
 | Vector Database | PostgreSQL + pgvector |
-| Embeddings | OpenAI `text-embedding-3-small` |
-| LLM | GPT-4o with function calling |
+| Embeddings | Voyage AI `voyage-code-3` |
+| LLM | Claude with tool use |
 | Slack | Slack Bolt SDK |
 | Deployment | Render |
 
@@ -40,8 +40,9 @@ slack-codebase-agent/
 ├── ingestion/
 │   ├── clone.py          # Clone target repo to temp directory
 │   ├── chunker.py        # Walk files, split into overlapping chunks
-│   ├── embedder.py       # Embed chunks via OpenAI API
-│   └── store.py          # Insert vectors + metadata into pgvector
+│   ├── embedder.py       # Embed chunks via Voyage AI
+│   ├── store.py          # Insert vectors + metadata into pgvector
+│   └── pipeline.py       # Wire clone → chunk → embed → store
 │
 ├── retrieval/
 │   ├── search.py         # Cosine similarity query against pgvector
@@ -79,7 +80,8 @@ slack-codebase-agent/
 
 - Python 3.11+
 - PostgreSQL with the `pgvector` extension enabled
-- An OpenAI API key
+- A Voyage AI API key
+- An Anthropic API key
 - A Slack app with slash command and bot token scopes
 
 ### 1. Clone the repo
@@ -104,7 +106,8 @@ cp .env.example .env
 Fill in `.env`:
 
 ```
-OPENAI_API_KEY=
+VOYAGE_API_KEY=
+ANTHROPIC_API_KEY=
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
@@ -120,13 +123,8 @@ psql $DATABASE_URL -f db/schema.sql
 ### 5. Run ingestion
 
 ```bash
-python -m ingestion.clone
-python -m ingestion.chunker
-python -m ingestion.embedder
-python -m ingestion.store
+python -m ingestion.pipeline
 ```
-
-Or run the full pipeline in sequence once a wrapper script is added.
 
 ### 6. Start the API server
 
@@ -180,7 +178,7 @@ The app is configured for deployment on [Render](https://render.com).
 
 **RAG** — Retrieval-Augmented Generation grounds the LLM's response in actual retrieved code rather than relying on parametric memory, reducing hallucination and keeping answers traceable to source.
 
-**Agentic retrieval** — GPT-4o is given a `search_codebase` tool it can invoke mid-generation if the initial retrieval isn't sufficient. This allows multi-hop reasoning across the codebase.
+**Agentic retrieval** — Claude is given a `search_codebase` tool it can invoke mid-generation if the initial retrieval isn't sufficient. This allows multi-hop reasoning across the codebase.
 
 **pgvector** — A PostgreSQL extension that stores and queries high-dimensional vectors natively, enabling cosine similarity search without a separate vector database service.
 
