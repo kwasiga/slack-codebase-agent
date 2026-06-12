@@ -16,8 +16,12 @@ app = App(
 @app.command("/ask")
 def handle_ask(ack, body, say):
     ack()
-    answer = ask(body["text"])
-    say(answer)
+    result = ask(body["text"])
+    text = result["answer"]
+    if result["sources"]:
+        unique_sources = {s["file"] for s in result["sources"]}
+        text += "\n\n*Sources:* " + ", ".join(unique_sources)
+    say(text)
 
 
 @app.command("/ingest")

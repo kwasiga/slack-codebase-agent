@@ -1,4 +1,4 @@
-asearch_codebase_tool = {
+search_codebase_tool = {
     "name": "search_codebase",
     "description": (
         "Search the codebase for relevant code snippets. "
