@@ -12,16 +12,17 @@ def walk_dir(repo_path):
     ]
 
 
-def chunk_file(path):
+def chunk_file(path, repo_root):
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     results = []
     chunk_size = 50
     overlap = 10
     step = chunk_size - overlap
+    relative_path = str(path.relative_to(repo_root))
     for i in range(0, len(lines), step):
-        chunk = lines[i: i + chunk_size]  # slice with i and chunk_size
+        chunk = lines[i: i + chunk_size]
         results.append({
-            "file_path": str(path),
+            "file_path": relative_path,
             "start_line": i + 1,
             "end_line": i + len(chunk),
             "chunk_text": "".join(chunk)
@@ -30,9 +31,8 @@ def chunk_file(path):
 
 
 def chunk_repo(repo_path):
+    repo_root = Path(repo_path)
     results = []
-    directories = walk_dir(repo_path)
-    for path in directories:
-        results.extend(chunk_file(path))
-
+    for path in walk_dir(repo_root):
+        results.extend(chunk_file(path, repo_root))
     return results

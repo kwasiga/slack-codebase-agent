@@ -6,14 +6,16 @@ A Slack bot that answers natural language questions about a codebase using Retri
 
 ## How It Works
 
-1. **Ingestion** — Run `/ingest <github-url>` to clone a repo, chunk the source files, embed each chunk using Voyage AI (`voyage-code-3`), and store the vectors in PostgreSQL with pgvector.
+1. **Ingestion** — Run `/ingest <github-url>` to clone a repo, chunk the source files into overlapping 50-line windows, embed each chunk using Voyage AI (`voyage-code-3`), and store the vectors in PostgreSQL with pgvector.
 2. **Retrieval** — When a query comes in, it's embedded with the same model and a cosine similarity search returns the most relevant code chunks.
-3. **Generation** — Claude receives the query and retrieved chunks and returns a grounded answer.
-4. **Slack Interface** — A Slack Bolt app receives slash commands via socket mode and posts the response back to the channel.
+3. **Agentic Generation** — Claude is given a `search_codebase` tool it can invoke multiple times with different queries to gather enough context before answering. It decides what to search and when — not the application.
+4. **Slack Interface** — A Slack Bolt app receives slash commands via socket mode and posts the response back to the channel with source file references.
 
 ```
 /ask How does authentication work?
-  → embed query → pgvector search → Claude → Slack response
+  → Claude calls search_codebase("auth middleware") → pgvector search
+  → Claude calls search_codebase("session token") → pgvector search
+  → Claude answers with sources → Slack response
 ```
 
 ---
@@ -26,7 +28,7 @@ A Slack bot that answers natural language questions about a codebase using Retri
 | Web Framework | FastAPI |
 | Vector Database | PostgreSQL + pgvector |
 | Embeddings | Voyage AI `voyage-code-3` |
-| LLM | Claude (`claude-opus-4-8`) |
+| LLM | Claude (`claude-haiku-4-5`) |
 | Slack | Slack Bolt SDK (socket mode) |
 | Deployment | Render |
 
@@ -158,6 +160,8 @@ The app is configured for deployment on [Render](https://render.com).
 **Chunking** — Source files are split into overlapping 50-line windows with a 10-line overlap to preserve context at boundaries.
 
 **RAG** — Retrieval-Augmented Generation grounds Claude's response in actual retrieved code rather than relying on parametric memory, reducing hallucination and keeping answers traceable to source.
+
+**Agentic retrieval** — Claude is given a `search_codebase` tool and controls the retrieval strategy itself. It can issue multiple queries (e.g. "JWT middleware", then "session token verification") before answering — multi-hop reasoning that single-shot RAG can't do.
 
 **pgvector** — A PostgreSQL extension that stores and queries high-dimensional vectors natively, enabling cosine similarity search without a separate vector database service.
 

@@ -20,7 +20,7 @@ def handle_ask(ack, body, say):
     text = result["answer"]
     if result["sources"]:
         unique_sources = {s["file"] for s in result["sources"]}
-        text += "\n\n*Sources:* " + ", ".join(unique_sources)
+        text += "\n\n*Sources:* " + ", ".join(sorted(unique_sources))
     say(text)
 
 
