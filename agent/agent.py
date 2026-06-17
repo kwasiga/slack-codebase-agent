@@ -20,10 +20,10 @@ def ask(question) -> dict:
     messages = [{"role": "user", "content": question}]
     sources = []
 
-    for _ in range(4):
+    for _ in range(6):
         response = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=1024,
+            max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=[search_codebase_tool],
             messages=messages,
