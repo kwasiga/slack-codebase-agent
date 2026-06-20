@@ -1,6 +1,6 @@
 # Slack Codebase Q&A Agent
 
-A Slack bot that answers natural language questions about a codebase using Retrieval-Augmented Generation (RAG). Ask it how a module works, where a feature is implemented, or what a function does — it retrieves the relevant code and generates a grounded answer.
+A Slack agent that answers natural language questions about a codebase using Retrieval-Augmented Generation (RAG). Ask it how a module works, where a feature is implemented, or what a function does — it retrieves the relevant code and generates a grounded answer.
 
 ---
 
