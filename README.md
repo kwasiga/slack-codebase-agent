@@ -117,7 +117,10 @@ Fill in `.env`:
 VOYAGE_API_KEY=
 ANTHROPIC_API_KEY=
 DATABASE_URL=postgresql://user:password@host:5432/dbname
+ACCESS_KEY=
 ```
+
+`ACCESS_KEY` is optional locally. If unset, the API is unauthenticated (fine for local dev). If set, every `/api/*` request must include a matching `X-Access-Key` header — the frontend prompts for it and stores it in `localStorage`. **Set this before deploying publicly**, otherwise anyone with the URL can spend your Anthropic/Voyage credits.
 
 ### 5. Start Postgres
 
@@ -185,8 +188,9 @@ Point `DATABASE_URL` at a managed PostgreSQL instance with pgvector enabled — 
 1. Push this repo to GitHub (already done if you're reading this from the repo).
 2. In the Render dashboard: **New → Blueprint**, point it at the repo.
 3. Render provisions `codebase-qa-db` and wires its connection string into the `codebase-qa` service automatically.
-4. Fill in `VOYAGE_API_KEY` and `ANTHROPIC_API_KEY` when prompted (marked `sync: false` in the blueprint, so Render asks for them rather than storing them in git).
+4. Fill in `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, and `ACCESS_KEY` when prompted (marked `sync: false` in the blueprint, so Render asks for them rather than storing them in git). Pick any password-like string for `ACCESS_KEY` — the deployed app will require it before answering any request, so random visitors can't spend your API credits.
 5. Deploy. On first boot the app creates the `vector` extension and `chunks` table itself.
+6. Open the deployed URL, enter your `ACCESS_KEY` at the prompt, and it unlocks the app for that browser (stored in `localStorage`).
 
 ---
 

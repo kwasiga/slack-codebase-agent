@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { askQuestion, getIngestStatus, startIngest, type Source } from './api'
+import { askQuestion, getIngestStatus, setAccessKey, startIngest, UnauthorizedError, type Source } from './api'
 import './App.css'
 
 interface Message {
@@ -24,6 +24,10 @@ function App() {
   const [ingest, setIngest] = useState<IngestState>({ phase: 'idle' })
   const [runningJobId, setRunningJobId] = useState<string | null>(null)
 
+  const [locked, setLocked] = useState(false)
+  const [authError, setAuthError] = useState(false)
+  const [accessInput, setAccessInput] = useState('')
+
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -41,8 +45,12 @@ function App() {
         } else if (job.status === 'error') {
           setIngest({ phase: 'error', repoUrl: job.repo_url, error: job.error ?? 'Ingestion failed' })
         }
-      } catch {
-        // keep polling; a transient network error shouldn't kill the poll
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          setLocked(true)
+          setAuthError(true)
+        }
+        // otherwise keep polling; a transient network error shouldn't kill the poll
       }
     }, 2000)
 
@@ -59,8 +67,24 @@ function App() {
       const { job_id } = await startIngest(url)
       setRunningJobId(job_id)
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        setLocked(true)
+        setAuthError(true)
+        setIngest({ phase: 'idle' })
+        return
+      }
       setIngest({ phase: 'error', repoUrl: url, error: err instanceof Error ? err.message : 'Failed to start ingestion' })
     }
+  }
+
+  function handleUnlock(e: React.FormEvent) {
+    e.preventDefault()
+    const code = accessInput.trim()
+    if (!code) return
+    setAccessKey(code)
+    setAccessInput('')
+    setAuthError(false)
+    setLocked(false)
   }
 
   async function handleAsk(e: React.FormEvent) {
@@ -76,11 +100,42 @@ function App() {
       const result = await askQuestion(text)
       setMessages((prev) => [...prev, { role: 'assistant', text: result.answer, sources: result.sources }])
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        setLocked(true)
+        setAuthError(true)
+        setMessages((prev) => prev.slice(0, -1))
+        setQuestion(text)
+        return
+      }
       const message = err instanceof Error ? err.message : 'Something went wrong.'
       setMessages((prev) => [...prev, { role: 'assistant', text: `Error: ${message}` }])
     } finally {
       setAsking(false)
     }
+  }
+
+  if (locked) {
+    return (
+      <div className="app">
+        <div className="gate">
+          <p>$ codebase-qa</p>
+          <p className="dim">{authError ? 'incorrect access code, try again' : 'access code required'}</p>
+          <form onSubmit={handleUnlock}>
+            <span className="prompt">&gt;</span>
+            <input
+              type="password"
+              placeholder="access code"
+              value={accessInput}
+              onChange={(e) => setAccessInput(e.target.value)}
+              autoFocus
+            />
+            <button type="submit" disabled={!accessInput.trim()}>
+              [unlock]
+            </button>
+          </form>
+        </div>
+      </div>
+    )
   }
 
   return (
