@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,8 +7,16 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 
 from api.routes import router
+from db.init import init_db
 
-app = FastAPI(title="Codebase Q&A")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Codebase Q&A", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

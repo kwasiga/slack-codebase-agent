@@ -1,0 +1,19 @@
+databases:
+  - name: codebase-qa-db
+    plan: free
+
+services:
+  - type: web
+    name: codebase-qa
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: codebase-qa-db
+          property: connectionString
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

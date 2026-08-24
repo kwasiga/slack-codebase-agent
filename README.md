@@ -119,18 +119,13 @@ ANTHROPIC_API_KEY=
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 ```
 
-### 5. Set up the database
-
-```bash
-psql $DATABASE_URL -f db/schema.sql
-```
-
-Or with Docker:
+### 5. Start Postgres
 
 ```bash
 docker run -d --name pgvector -e POSTGRES_PASSWORD=postgres -p 5432:5432 pgvector/pgvector:pg17
-docker exec -i pgvector psql -U postgres -d postgres < db/schema.sql
 ```
+
+The app creates the `vector` extension and `chunks` table itself on startup (idempotent — safe to run against an existing database too), so there's no manual schema step.
 
 ### 6. Run it
 
@@ -181,7 +176,17 @@ docker build -t codebase-qa .
 docker run -p 8000:8000 --env-file .env codebase-qa
 ```
 
-Point `DATABASE_URL` at a managed PostgreSQL instance with pgvector enabled (e.g. a Render Postgres add-on).
+Point `DATABASE_URL` at a managed PostgreSQL instance with pgvector enabled — the app initializes its own schema on startup, so no manual `psql` step is needed.
+
+### One-click deploy on Render
+
+`render.yaml` is a [Render Blueprint](https://render.com/docs/blueprint-spec) that provisions a free Postgres instance and a Docker web service in one go:
+
+1. Push this repo to GitHub (already done if you're reading this from the repo).
+2. In the Render dashboard: **New → Blueprint**, point it at the repo.
+3. Render provisions `codebase-qa-db` and wires its connection string into the `codebase-qa` service automatically.
+4. Fill in `VOYAGE_API_KEY` and `ANTHROPIC_API_KEY` when prompted (marked `sync: false` in the blueprint, so Render asks for them rather than storing them in git).
+5. Deploy. On first boot the app creates the `vector` extension and `chunks` table itself.
 
 ---
 
